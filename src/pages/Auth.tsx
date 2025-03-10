@@ -6,6 +6,7 @@ import { User, LogIn } from 'lucide-react';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { login, register, isAuthenticated, isLoading } = useAuth();
@@ -21,15 +22,16 @@ const Auth = () => {
     e.preventDefault();
     
     if (isLogin) {
-      await login(email, password);
+      await login(username, password);
     } else {
-      await register(email, password);
+      await register(email, password, username);
     }
   };
   
   const toggleAuthMode = () => {
     setIsLogin(!isLogin);
     // Reset form fields when toggling
+    setUsername('');
     setEmail('');
     setPassword('');
   };
@@ -52,19 +54,36 @@ const Auth = () => {
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium mb-1">
-              Email
+            <label htmlFor="username" className="block text-sm font-medium mb-1">
+              Username
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="w-full p-3 rounded-md border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="you@example.com"
+              placeholder="johndoe"
               required
             />
           </div>
+          
+          {!isLogin && (
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium mb-1">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-3 rounded-md border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+          )}
           
           <div>
             <label htmlFor="password" className="block text-sm font-medium mb-1">

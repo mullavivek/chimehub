@@ -8,8 +8,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
+  register: (email: string, password: string, username?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -21,6 +21,17 @@ export const useAuth = () => {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+};
+
+const generateRandomUsername = () => {
+  const adjectives = ['Happy', 'Lucky', 'Sunny', 'Cool', 'Swift', 'Clever'];
+  const nouns = ['Panda', 'Tiger', 'Eagle', 'Dragon', 'Phoenix', 'Dolphin'];
+  const randomNum = Math.floor(Math.random() * 1000);
+  
+  const randomAdjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+  
+  return `${randomAdjective}${randomNoun}${randomNum}`;
 };
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -103,12 +114,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     try {
       setIsLoading(true);
       
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('email')
+        .eq('username', username)
+        .single();
+      
+      if (profileError) {
+        throw new Error('Username not found');
+      }
+      
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: profiles.email,
         password,
       });
       
@@ -131,20 +152,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const register = async (email: string, password: string) => {
+  const register = async (email: string, password: string, providedUsername?: string) => {
     try {
       setIsLoading(true);
+      
+      const username = providedUsername || generateRandomUsername();
+      
+      const { data: existingUser, error: checkError } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', username)
+        .single();
+      
+      if (existingUser) {
+        throw new Error('Username is already taken');
+      }
       
       const { error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            username,
+          },
+        },
       });
       
       if (error) throw error;
       
       toast({
         title: "Registration successful",
-        description: "Your account has been created. Please check your email for verification.",
+        description: providedUsername 
+          ? "Your account has been created. Please check your email for verification."
+          : `Your account has been created with username: ${username}. Please check your email for verification.`,
       });
       
       navigate('/');
