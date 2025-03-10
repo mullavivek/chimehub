@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/ui/UserAvatar';
@@ -12,7 +11,6 @@ const Profile = () => {
   const { user, isLoading } = useAuth();
   const [defaultAnonymous, setDefaultAnonymous] = useState(false);
   
-  // Mock data for user's posts and polls
   const userPosts: Post[] = [
     {
       id: '1',
@@ -56,7 +54,6 @@ const Profile = () => {
     },
   ];
   
-  // Mock data for anonymous posts and polls
   const anonymousPosts: Post[] = [
     {
       id: '3',
@@ -117,7 +114,8 @@ const Profile = () => {
             <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
               <UserAvatar user={user} size="lg" />
               <div className="text-center md:text-left">
-                <h2 className="text-xl font-semibold">{user?.name}</h2>
+                <h2 className="text-xl font-semibold">{user?.name || 'Anonymous'}</h2>
+                <p className="text-muted-foreground">@{user?.username}</p>
                 <p className="text-muted-foreground">Member since {new Date(user?.createdAt || '').toLocaleDateString()}</p>
                 
                 <div className="flex gap-4 mt-4 justify-center md:justify-start">
