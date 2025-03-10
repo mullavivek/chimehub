@@ -9,7 +9,135 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      poll_options: {
+        Row: {
+          id: string
+          poll_id: string
+          text: string
+          votes: number
+        }
+        Insert: {
+          id?: string
+          poll_id: string
+          text: string
+          votes?: number
+        }
+        Update: {
+          id?: string
+          poll_id?: string
+          text?: string
+          votes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_options_poll_id_fkey"
+            columns: ["poll_id"]
+            isOneToOne: false
+            referencedRelation: "polls"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      polls: {
+        Row: {
+          author_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_anonymous: boolean
+          question: string
+          total_votes: number
+        }
+        Insert: {
+          author_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_anonymous?: boolean
+          question: string
+          total_votes?: number
+        }
+        Update: {
+          author_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_anonymous?: boolean
+          question?: string
+          total_votes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "polls_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts: {
+        Row: {
+          author_id: string
+          content: string
+          created_at: string
+          id: string
+          is_anonymous: boolean
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          content: string
+          created_at?: string
+          id?: string
+          is_anonymous?: boolean
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          is_anonymous?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          image: string | null
+          name: string | null
+          username: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+          image?: string | null
+          name?: string | null
+          username?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          image?: string | null
+          name?: string | null
+          username?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

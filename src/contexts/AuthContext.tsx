@@ -1,7 +1,9 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '@/lib/types';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from 'react-router-dom';
 
 interface AuthContextType {
   user: User | null;
@@ -26,48 +28,104 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  // Mock user for demo purposes
   useEffect(() => {
-    // Simulate loading user data
-    setTimeout(() => {
-      const mockUser: User = {
-        id: '1',
-        name: 'John Doe',
-        username: 'johndoe',
-        email: 'john@example.com',
-        createdAt: new Date(),
-        image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John'
-      };
-      setUser(mockUser);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setIsLoading(true);
+        
+        if (event === 'SIGNED_IN' && session) {
+          try {
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+              
+            if (error) throw error;
+            
+            if (data) {
+              setUser({
+                id: data.id,
+                name: data.name || '',
+                username: data.username || '',
+                email: data.email || '',
+                image: data.image,
+                createdAt: new Date(data.created_at),
+              });
+            }
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+        }
+        
+        setIsLoading(false);
+      }
+    );
+
+    // Initial session check
+    const fetchInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          if (error) throw error;
+          
+          if (data) {
+            setUser({
+              id: data.id,
+              name: data.name || '',
+              username: data.username || '',
+              email: data.email || '',
+              image: data.image,
+              createdAt: new Date(data.created_at),
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching user profile:', error);
+        }
+      }
+      
       setIsLoading(false);
-    }, 1000);
+    };
+
+    fetchInitialSession();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      // Implement actual login logic here
       
-      // Mock successful login
-      const mockUser: User = {
-        id: '1',
-        name: 'John Doe',
-        username: 'johndoe',
-        email: email,
-        createdAt: new Date(),
-        image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John'
-      };
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       
-      setUser(mockUser);
+      if (error) throw error;
+      
       toast({
         title: "Login successful",
         description: "Welcome back!",
       });
-    } catch (error) {
+      
+      navigate('/');
+    } catch (error: any) {
       toast({
         title: "Login failed",
-        description: "Please check your credentials and try again.",
+        description: error.message || "Please check your credentials and try again.",
         variant: "destructive",
       });
     } finally {
@@ -78,27 +136,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (email: string, password: string, name: string, username: string) => {
     try {
       setIsLoading(true);
-      // Implement actual registration logic here
       
-      // Mock successful registration
-      const mockUser: User = {
-        id: '1',
-        name: name,
-        username: username,
-        email: email,
-        createdAt: new Date(),
-        image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`
-      };
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            username,
+          },
+        },
+      });
       
-      setUser(mockUser);
+      if (error) throw error;
+      
       toast({
         title: "Registration successful",
-        description: "Your account has been created.",
+        description: "Your account has been created. Please check your email for verification.",
       });
-    } catch (error) {
+      
+      navigate('/');
+    } catch (error: any) {
       toast({
         title: "Registration failed",
-        description: "Please try again with different information.",
+        description: error.message || "Please try again with different information.",
         variant: "destructive",
       });
     } finally {
@@ -109,17 +170,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     try {
       setIsLoading(true);
-      // Implement actual logout logic here
+      
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) throw error;
       
       setUser(null);
       toast({
         title: "Logged out",
         description: "You have been successfully logged out.",
       });
-    } catch (error) {
+      
+      navigate('/auth');
+    } catch (error: any) {
       toast({
         title: "Logout failed",
-        description: "An error occurred during logout.",
+        description: error.message || "An error occurred during logout.",
         variant: "destructive",
       });
     } finally {
