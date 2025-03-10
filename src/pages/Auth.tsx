@@ -8,8 +8,6 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
   const { login, register, isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   
@@ -25,7 +23,7 @@ const Auth = () => {
     if (isLogin) {
       await login(email, password);
     } else {
-      await register(email, password, name, username);
+      await register(email, password);
     }
   };
   
@@ -34,8 +32,6 @@ const Auth = () => {
     // Reset form fields when toggling
     setEmail('');
     setPassword('');
-    setName('');
-    setUsername('');
   };
   
   if (isAuthenticated) {
@@ -55,40 +51,6 @@ const Auth = () => {
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <>
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium mb-1">
-                  Full Name
-                </label>
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-3 rounded-md border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="John Doe"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="username" className="block text-sm font-medium mb-1">
-                  Username
-                </label>
-                <input
-                  id="username"
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full p-3 rounded-md border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                  placeholder="johndoe"
-                  required
-                />
-              </div>
-            </>
-          )}
-          
           <div>
             <label htmlFor="email" className="block text-sm font-medium mb-1">
               Email

@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,7 +9,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, username: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -66,7 +65,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    // Initial session check
     const fetchInitialSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -133,19 +131,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const register = async (email: string, password: string, name: string, username: string) => {
+  const register = async (email: string, password: string) => {
     try {
       setIsLoading(true);
       
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            name,
-            username,
-          },
-        },
       });
       
       if (error) throw error;
