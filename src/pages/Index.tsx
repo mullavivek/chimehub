@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
@@ -21,6 +22,8 @@ const Index = () => {
       setIsLoading(true);
       
       try {
+        console.log('Fetching data from Supabase...');
+        
         // Fetch posts
         const { data: postsData, error: postsError } = await supabase
           .from('posts')
@@ -42,7 +45,12 @@ const Index = () => {
           `)
           .order('created_at', { ascending: false });
           
-        if (postsError) throw postsError;
+        if (postsError) {
+          console.error('Error fetching posts:', postsError);
+          throw postsError;
+        }
+        
+        console.log('Posts data:', postsData);
         
         // Fetch polls with their options
         const { data: pollsData, error: pollsError } = await supabase
@@ -71,7 +79,12 @@ const Index = () => {
           `)
           .order('created_at', { ascending: false });
           
-        if (pollsError) throw pollsError;
+        if (pollsError) {
+          console.error('Error fetching polls:', pollsError);
+          throw pollsError;
+        }
+        
+        console.log('Polls data:', pollsData);
         
         // Format posts data
         const formattedPosts: Post[] = postsData.map(post => ({
@@ -79,12 +92,13 @@ const Index = () => {
           content: post.content,
           authorId: post.author_id,
           author: post.is_anonymous ? undefined : {
-            id: post.profiles.id,
-            name: post.profiles.name || '',
-            username: post.profiles.username || '',
-            email: post.profiles.email || '',
-            image: post.profiles.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles.username || post.profiles.id}`,
-            createdAt: new Date(post.profiles.created_at),
+            id: post.profiles?.id || '',
+            name: post.profiles?.name || '',
+            username: post.profiles?.username || '',
+            email: post.profiles?.email || '',
+            image: post.profiles?.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username || post.profiles?.id || post.author_id}`,
+            createdAt: new Date(post.profiles?.created_at || post.created_at),
+            defaultAnonymous: post.profiles?.default_anonymous || false,
           },
           isAnonymous: post.is_anonymous,
           createdAt: new Date(post.created_at),
@@ -99,12 +113,13 @@ const Index = () => {
           question: poll.question,
           authorId: poll.author_id,
           author: poll.is_anonymous ? undefined : {
-            id: poll.profiles.id,
-            name: poll.profiles.name || '',
-            username: poll.profiles.username || '',
-            email: poll.profiles.email || '',
-            image: poll.profiles.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${poll.profiles.username || poll.profiles.id}`,
-            createdAt: new Date(poll.profiles.created_at),
+            id: poll.profiles?.id || '',
+            name: poll.profiles?.name || '',
+            username: poll.profiles?.username || '',
+            email: poll.profiles?.email || '',
+            image: poll.profiles?.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${poll.profiles?.username || poll.profiles?.id || poll.author_id}`,
+            createdAt: new Date(poll.profiles?.created_at || poll.created_at),
+            defaultAnonymous: poll.profiles?.default_anonymous || false,
           },
           isAnonymous: poll.is_anonymous,
           createdAt: new Date(poll.created_at),
