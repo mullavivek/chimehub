@@ -1,10 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import PostCard from '@/components/posts/PostCard';
 import PollCard from '@/components/polls/PollCard';
 import { Post, Poll } from '@/lib/types';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 type ContentType = 'all' | 'posts' | 'polls';
 
@@ -13,79 +14,125 @@ const Index = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Simulate fetching data
-    setTimeout(() => {
-      const mockPosts: Post[] = [
-        {
-          id: '1',
-          content: 'I just launched a new project and I\'m really excited about it! What do you think?',
-          authorId: '1',
-          author: {
-            id: '1',
-            name: 'John Doe',
-            username: 'johndoe',
-            email: 'john@example.com',
-            createdAt: new Date('2022-01-15'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John',
+    const fetchData = async () => {
+      setIsLoading(true);
+      
+      try {
+        // Fetch posts
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select(`
+            id,
+            content,
+            author_id,
+            is_anonymous,
+            created_at,
+            updated_at,
+            profiles:author_id (
+              id,
+              name,
+              username,
+              email,
+              image,
+              created_at
+            )
+          `)
+          .order('created_at', { ascending: false });
+          
+        if (postsError) throw postsError;
+        
+        // Fetch polls with their options
+        const { data: pollsData, error: pollsError } = await supabase
+          .from('polls')
+          .select(`
+            id,
+            question,
+            author_id,
+            is_anonymous,
+            created_at,
+            expires_at,
+            total_votes,
+            profiles:author_id (
+              id,
+              name,
+              username,
+              email,
+              image,
+              created_at
+            ),
+            poll_options (
+              id,
+              text,
+              votes
+            )
+          `)
+          .order('created_at', { ascending: false });
+          
+        if (pollsError) throw pollsError;
+        
+        // Format posts data
+        const formattedPosts: Post[] = postsData.map(post => ({
+          id: post.id,
+          content: post.content,
+          authorId: post.author_id,
+          author: post.is_anonymous ? undefined : {
+            id: post.profiles.id,
+            name: post.profiles.name || '',
+            username: post.profiles.username || '',
+            email: post.profiles.email || '',
+            image: post.profiles.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles.username || post.profiles.id}`,
+            createdAt: new Date(post.profiles.created_at),
           },
-          isAnonymous: false,
-          createdAt: new Date('2022-01-15'),
-          updatedAt: new Date('2022-01-15'),
-          likes: 15,
-          comments: 2,
-        },
-        {
-          id: '2',
-          content: 'Sometimes I feel like I\'m not making enough progress in my career. Does anyone else feel this way?',
-          authorId: '2',
-          author: {
-            id: '2',
-            name: 'Jane Smith',
-            username: 'janesmith',
-            email: 'jane@example.com',
-            createdAt: new Date('2022-02-20'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jane',
+          isAnonymous: post.is_anonymous,
+          createdAt: new Date(post.created_at),
+          updatedAt: new Date(post.updated_at),
+          likes: 0, // TODO: Implement likes count
+          comments: 0, // TODO: Implement comments count
+        }));
+        
+        // Format polls data
+        const formattedPolls: Poll[] = pollsData.map(poll => ({
+          id: poll.id,
+          question: poll.question,
+          authorId: poll.author_id,
+          author: poll.is_anonymous ? undefined : {
+            id: poll.profiles.id,
+            name: poll.profiles.name || '',
+            username: poll.profiles.username || '',
+            email: poll.profiles.email || '',
+            image: poll.profiles.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${poll.profiles.username || poll.profiles.id}`,
+            createdAt: new Date(poll.profiles.created_at),
           },
-          isAnonymous: true,
-          createdAt: new Date('2022-02-20'),
-          updatedAt: new Date('2022-02-20'),
-          likes: 42,
-          comments: 7,
-        },
-      ];
+          isAnonymous: poll.is_anonymous,
+          createdAt: new Date(poll.created_at),
+          expiresAt: poll.expires_at ? new Date(poll.expires_at) : undefined,
+          totalVotes: poll.total_votes,
+          options: poll.poll_options.map(option => ({
+            id: option.id,
+            text: option.text,
+            votes: option.votes,
+          })),
+        }));
+        
+        setPosts(formattedPosts);
+        setPolls(formattedPolls);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast({
+          title: "Error loading content",
+          description: "Could not load posts and polls. Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      const mockPolls: Poll[] = [
-        {
-          id: '1',
-          question: 'What\'s your preferred way to work?',
-          options: [
-            { id: '1', text: 'Remote work', votes: 25 },
-            { id: '2', text: 'Office work', votes: 10 },
-            { id: '3', text: 'Hybrid approach', votes: 35 },
-          ],
-          authorId: '3',
-          author: {
-            id: '3',
-            name: 'Alex Rodriguez',
-            username: 'alexr',
-            email: 'alex@example.com',
-            createdAt: new Date('2022-03-10'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
-          },
-          isAnonymous: false,
-          createdAt: new Date('2022-03-10'),
-          totalVotes: 70,
-          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2), // 2 days from now
-        },
-      ];
-
-      setPosts(mockPosts);
-      setPolls(mockPolls);
-      setIsLoading(false);
-    }, 1500);
-  }, []);
+    fetchData();
+  }, [toast]);
 
   const renderContent = () => {
     if (isLoading) {
