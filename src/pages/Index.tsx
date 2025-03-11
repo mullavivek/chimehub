@@ -40,7 +40,8 @@ const Index = () => {
               username,
               email,
               image,
-              created_at
+              created_at,
+              default_anonymous
             )
           `)
           .order('created_at', { ascending: false });
@@ -69,7 +70,8 @@ const Index = () => {
               username,
               email,
               image,
-              created_at
+              created_at,
+              default_anonymous
             ),
             poll_options (
               id,
