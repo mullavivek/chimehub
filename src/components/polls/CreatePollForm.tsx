@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { User, Plus, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const CreatePollForm = () => {
   const [question, setQuestion] = useState('');
@@ -14,6 +15,13 @@ const CreatePollForm = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  useEffect(() => {
+    // Set anonymous status based on user's default preference
+    if (user && user.defaultAnonymous) {
+      setIsAnonymous(user.defaultAnonymous);
+    }
+  }, [user]);
   
   const handleOptionChange = (index: number, value: string) => {
     const newOptions = [...options];
@@ -47,8 +55,17 @@ const CreatePollForm = () => {
     setOptions(newOptions);
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "You must be logged in to create a poll.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!question.trim()) {
       toast({
@@ -70,15 +87,57 @@ const CreatePollForm = () => {
     
     setIsSubmitting(true);
     
-    // In a real app, this would be an API call
-    setTimeout(() => {
+    try {
+      // Create the poll first
+      const { data: pollData, error: pollError } = await supabase
+        .from('polls')
+        .insert({
+          question: question.trim(),
+          author_id: user.id,
+          is_anonymous: isAnonymous,
+          total_votes: 0,
+          // Add expiry date if needed
+          expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days from now
+        })
+        .select();
+      
+      if (pollError) throw pollError;
+      
+      if (!pollData || pollData.length === 0) {
+        throw new Error('Failed to create poll');
+      }
+      
+      const pollId = pollData[0].id;
+      
+      // Create the poll options
+      const optionsToInsert = options.map(option => ({
+        poll_id: pollId,
+        text: option.trim(),
+        votes: 0,
+      }));
+      
+      const { error: optionsError } = await supabase
+        .from('poll_options')
+        .insert(optionsToInsert);
+      
+      if (optionsError) throw optionsError;
+      
       toast({
         title: "Poll created",
         description: "Your poll has been published successfully.",
       });
-      setIsSubmitting(false);
+      
       navigate('/');
-    }, 1000);
+    } catch (error) {
+      console.error('Error creating poll:', error);
+      toast({
+        title: "Failed to create poll",
+        description: "There was an error publishing your poll. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   const handleCancel = () => {

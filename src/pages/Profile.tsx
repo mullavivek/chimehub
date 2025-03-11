@@ -1,93 +1,244 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PostCard from '@/components/posts/PostCard';
 import PollCard from '@/components/polls/PollCard';
 import { Post, Poll } from '@/lib/types';
-import { User } from 'lucide-react';
+import { User, Save, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 const Profile = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [defaultAnonymous, setDefaultAnonymous] = useState(false);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [userPolls, setUserPolls] = useState<Poll[]>([]);
+  const [anonymousPosts, setAnonymousPosts] = useState<Post[]>([]);
+  const [anonymousPolls, setAnonymousPolls] = useState<Poll[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [name, setName] = useState('');
+  const { toast } = useToast();
   
-  const userPosts: Post[] = [
-    {
-      id: '1',
-      content: 'Just experienced the most amazing sunset at the beach. Nature\'s beauty is truly breathtaking sometimes.',
-      authorId: user?.id || '',
-      author: user || undefined,
-      isAnonymous: false,
-      createdAt: new Date('2022-03-05'),
-      updatedAt: new Date('2022-03-05'),
-      likes: 24,
-      comments: 5,
-    },
-    {
-      id: '2',
-      content: 'Just finished reading "Atomic Habits" and it completely changed my perspective on building good routines.',
-      authorId: user?.id || '',
-      author: user || undefined,
-      isAnonymous: false,
-      createdAt: new Date('2022-03-08'),
-      updatedAt: new Date('2022-03-08'),
-      likes: 42,
-      comments: 7,
-    },
-  ];
+  useEffect(() => {
+    if (user) {
+      setDefaultAnonymous(user.defaultAnonymous || false);
+      setName(user.name || '');
+      fetchUserContent();
+    }
+  }, [user]);
   
-  const userPolls: Poll[] = [
-    {
-      id: '1',
-      question: 'What\'s your preferred way to work?',
-      options: [
-        { id: '1', text: 'Remote work', votes: 25 },
-        { id: '2', text: 'Office work', votes: 10 },
-        { id: '3', text: 'Hybrid approach', votes: 35 },
-      ],
-      authorId: user?.id || '',
-      author: user || undefined,
-      isAnonymous: false,
-      createdAt: new Date('2022-03-10'),
-      totalVotes: 70,
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2), // 2 days from now
-    },
-  ];
+  const fetchUserContent = async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoading(true);
+      
+      // Fetch user's public posts
+      const { data: postsData, error: postsError } = await supabase
+        .from('posts')
+        .select(`
+          id,
+          content,
+          author_id,
+          is_anonymous,
+          created_at,
+          updated_at
+        `)
+        .eq('author_id', user.id)
+        .eq('is_anonymous', false)
+        .order('created_at', { ascending: false });
+      
+      if (postsError) throw postsError;
+      
+      // Fetch user's anonymous posts
+      const { data: anonymousPostsData, error: anonymousPostsError } = await supabase
+        .from('posts')
+        .select(`
+          id,
+          content,
+          author_id,
+          is_anonymous,
+          created_at,
+          updated_at
+        `)
+        .eq('author_id', user.id)
+        .eq('is_anonymous', true)
+        .order('created_at', { ascending: false });
+      
+      if (anonymousPostsError) throw anonymousPostsError;
+      
+      // Fetch user's public polls
+      const { data: pollsData, error: pollsError } = await supabase
+        .from('polls')
+        .select(`
+          id,
+          question,
+          author_id,
+          is_anonymous,
+          created_at,
+          expires_at,
+          total_votes
+        `)
+        .eq('author_id', user.id)
+        .eq('is_anonymous', false)
+        .order('created_at', { ascending: false });
+      
+      if (pollsError) throw pollsError;
+      
+      // Fetch user's anonymous polls
+      const { data: anonymousPollsData, error: anonymousPollsError } = await supabase
+        .from('polls')
+        .select(`
+          id,
+          question,
+          author_id,
+          is_anonymous,
+          created_at,
+          expires_at,
+          total_votes
+        `)
+        .eq('author_id', user.id)
+        .eq('is_anonymous', true)
+        .order('created_at', { ascending: false });
+      
+      if (anonymousPollsError) throw anonymousPollsError;
+      
+      // Fetch poll options for all polls
+      const pollIds = [...(pollsData || []), ...(anonymousPollsData || [])].map(poll => poll.id);
+      
+      let pollOptionsMap: Record<string, any[]> = {};
+      
+      if (pollIds.length > 0) {
+        const { data: optionsData, error: optionsError } = await supabase
+          .from('poll_options')
+          .select('*')
+          .in('poll_id', pollIds);
+        
+        if (optionsError) throw optionsError;
+        
+        // Group options by poll_id
+        pollOptionsMap = (optionsData || []).reduce((acc, option) => {
+          if (!acc[option.poll_id]) {
+            acc[option.poll_id] = [];
+          }
+          acc[option.poll_id].push({
+            id: option.id,
+            text: option.text,
+            votes: option.votes
+          });
+          return acc;
+        }, {} as Record<string, any[]>);
+      }
+      
+      // Transform data to match the app's data structure
+      const transformedPosts = (postsData || []).map(post => ({
+        id: post.id,
+        content: post.content,
+        authorId: post.author_id,
+        author: user,
+        isAnonymous: post.is_anonymous,
+        createdAt: new Date(post.created_at),
+        updatedAt: new Date(post.updated_at),
+        likes: 0, // To be implemented
+        comments: 0, // To be implemented
+      }));
+      
+      const transformedAnonymousPosts = (anonymousPostsData || []).map(post => ({
+        id: post.id,
+        content: post.content,
+        authorId: post.author_id,
+        author: user,
+        isAnonymous: post.is_anonymous,
+        createdAt: new Date(post.created_at),
+        updatedAt: new Date(post.updated_at),
+        likes: 0, // To be implemented
+        comments: 0, // To be implemented
+      }));
+      
+      const transformedPolls = (pollsData || []).map(poll => ({
+        id: poll.id,
+        question: poll.question,
+        options: pollOptionsMap[poll.id] || [],
+        authorId: poll.author_id,
+        author: user,
+        isAnonymous: poll.is_anonymous,
+        createdAt: new Date(poll.created_at),
+        expiresAt: poll.expires_at ? new Date(poll.expires_at) : undefined,
+        totalVotes: poll.total_votes,
+      }));
+      
+      const transformedAnonymousPolls = (anonymousPollsData || []).map(poll => ({
+        id: poll.id,
+        question: poll.question,
+        options: pollOptionsMap[poll.id] || [],
+        authorId: poll.author_id,
+        author: user,
+        isAnonymous: poll.is_anonymous,
+        createdAt: new Date(poll.created_at),
+        expiresAt: poll.expires_at ? new Date(poll.expires_at) : undefined,
+        totalVotes: poll.total_votes,
+      }));
+      
+      setUserPosts(transformedPosts);
+      setAnonymousPosts(transformedAnonymousPosts);
+      setUserPolls(transformedPolls);
+      setAnonymousPolls(transformedAnonymousPolls);
+    } catch (error) {
+      console.error('Error fetching user content:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load your content. Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
-  const anonymousPosts: Post[] = [
-    {
-      id: '3',
-      content: 'Sometimes I feel like I\'m not making enough progress in my career. Does anyone else feel this way?',
-      authorId: user?.id || '',
-      author: user || undefined,
-      isAnonymous: true,
-      createdAt: new Date('2022-02-20'),
-      updatedAt: new Date('2022-02-20'),
-      likes: 42,
-      comments: 7,
-    },
-  ];
+  const handleSaveSettings = async () => {
+    if (!user) return;
+    
+    try {
+      setIsSaving(true);
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: name.trim() || null,
+          default_anonymous: defaultAnonymous
+        })
+        .eq('id', user.id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Settings Saved",
+        description: "Your profile settings have been updated successfully."
+      });
+      
+      // Update local user state if necessary
+      if (user.name !== name || user.defaultAnonymous !== defaultAnonymous) {
+        // This will trigger a re-fetch in a real implementation
+        fetchUserContent();
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save your settings. Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+      setEditingName(false);
+    }
+  };
   
-  const anonymousPolls: Poll[] = [
-    {
-      id: '2',
-      question: 'Which programming language do you prefer?',
-      options: [
-        { id: '1', text: 'JavaScript', votes: 42 },
-        { id: '2', text: 'Python', votes: 38 },
-        { id: '3', text: 'Java', votes: 15 },
-        { id: '4', text: 'C#', votes: 20 },
-        { id: '5', text: 'Other', votes: 10 },
-      ],
-      authorId: user?.id || '',
-      author: user || undefined,
-      isAnonymous: true,
-      createdAt: new Date('2022-03-15'),
-      totalVotes: 125,
-    },
-  ];
-  
-  if (isLoading) {
+  if (authLoading) {
     return (
       <div className="app-container py-8">
         <div className="max-w-3xl mx-auto">
@@ -114,7 +265,33 @@ const Profile = () => {
             <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
               <UserAvatar user={user} size="lg" />
               <div className="text-center md:text-left">
-                <h2 className="text-xl font-semibold">{user?.name || 'Anonymous'}</h2>
+                {editingName ? (
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="px-2 py-1 border rounded w-full max-w-[200px]"
+                      placeholder="Your name"
+                    />
+                    <button 
+                      onClick={() => setEditingName(false)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    {user?.name || 'Anonymous'}
+                    <button 
+                      onClick={() => setEditingName(true)}
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      Edit
+                    </button>
+                  </h2>
+                )}
                 <p className="text-muted-foreground">@{user?.username}</p>
                 <p className="text-muted-foreground">Member since {new Date(user?.createdAt || '').toLocaleDateString()}</p>
                 
@@ -172,7 +349,27 @@ const Profile = () => {
                 </div>
               </div>
               
-              <div className="pt-2">
+              <div className="flex justify-end pt-4">
+                <button
+                  onClick={handleSaveSettings}
+                  disabled={isSaving}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} />
+                      Save Changes
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              <div className="pt-2 border-t mt-4">
                 <button className="text-destructive hover:text-destructive/80 text-sm font-medium transition-colors">
                   Delete account
                 </button>
@@ -195,7 +392,13 @@ const Profile = () => {
               </TabsList>
               
               <TabsContent value="posts" className="p-4">
-                {userPosts.length > 0 ? (
+                {isLoading ? (
+                  <div className="animate-pulse space-y-4">
+                    {[1, 2].map((i) => (
+                      <div key={i} className="bg-muted h-40 rounded-lg w-full"></div>
+                    ))}
+                  </div>
+                ) : userPosts.length > 0 ? (
                   <div className="space-y-4">
                     {userPosts.map(post => (
                       <PostCard key={post.id} post={post} />
@@ -207,7 +410,13 @@ const Profile = () => {
               </TabsContent>
               
               <TabsContent value="polls" className="p-4">
-                {userPolls.length > 0 ? (
+                {isLoading ? (
+                  <div className="animate-pulse space-y-4">
+                    {[1, 2].map((i) => (
+                      <div key={i} className="bg-muted h-64 rounded-lg w-full"></div>
+                    ))}
+                  </div>
+                ) : userPolls.length > 0 ? (
                   <div className="space-y-4">
                     {userPolls.map(poll => (
                       <PollCard key={poll.id} poll={poll} />
@@ -219,7 +428,13 @@ const Profile = () => {
               </TabsContent>
               
               <TabsContent value="anonymous" className="p-4">
-                {anonymousPosts.length > 0 || anonymousPolls.length > 0 ? (
+                {isLoading ? (
+                  <div className="animate-pulse space-y-4">
+                    {[1, 2].map((i) => (
+                      <div key={i} className="bg-muted h-40 rounded-lg w-full"></div>
+                    ))}
+                  </div>
+                ) : anonymousPosts.length > 0 || anonymousPolls.length > 0 ? (
                   <div className="space-y-4">
                     {anonymousPosts.map(post => (
                       <PostCard key={post.id} post={post} />

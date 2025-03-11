@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '@/lib/types';
 import { supabase } from '@/integrations/supabase/client';
@@ -63,6 +64,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 email: data.email || '',
                 image: data.image,
                 createdAt: new Date(data.created_at),
+                defaultAnonymous: data.default_anonymous || false,
               });
             }
           } catch (error) {
@@ -97,6 +99,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               email: data.email || '',
               image: data.image,
               createdAt: new Date(data.created_at),
+              defaultAnonymous: data.default_anonymous || false,
             });
           }
         } catch (error) {

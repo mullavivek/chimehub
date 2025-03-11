@@ -6,6 +6,7 @@ export interface User {
   image?: string;
   email: string;
   createdAt: Date;
+  defaultAnonymous?: boolean;
 }
 
 export interface Post {

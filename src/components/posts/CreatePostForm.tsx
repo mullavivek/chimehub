@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { User } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 const CreatePostForm = () => {
   const [content, setContent] = useState('');
@@ -14,8 +15,24 @@ const CreatePostForm = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    // Set anonymous status based on user's default preference
+    if (user && user.defaultAnonymous) {
+      setIsAnonymous(user.defaultAnonymous);
+    }
+  }, [user]);
+  
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "You must be logged in to create a post.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!content.trim()) {
       toast({
@@ -28,15 +45,35 @@ const CreatePostForm = () => {
     
     setIsSubmitting(true);
     
-    // In a real app, this would be an API call
-    setTimeout(() => {
+    try {
+      // Insert the post into the database
+      const { data, error } = await supabase
+        .from('posts')
+        .insert({
+          content: content.trim(),
+          author_id: user.id,
+          is_anonymous: isAnonymous,
+        })
+        .select();
+      
+      if (error) throw error;
+      
       toast({
         title: "Post created",
         description: "Your post has been published successfully.",
       });
-      setIsSubmitting(false);
+      
       navigate('/');
-    }, 1000);
+    } catch (error) {
+      console.error('Error creating post:', error);
+      toast({
+        title: "Failed to create post",
+        description: "There was an error publishing your post. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   const handleCancel = () => {
