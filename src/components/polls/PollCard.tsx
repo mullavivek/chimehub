@@ -1,10 +1,14 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Poll, PollOption } from '@/lib/types';
 import UserAvatar from '@/components/ui/UserAvatar';
-import { BarChart2, Share2, MoreHorizontal } from 'lucide-react';
+import { BarChart2, Share2, MoreHorizontal, Trash2, X, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import CommentSection from '@/components/comments/CommentSection';
 
 interface PollCardProps {
   poll: Poll;
@@ -14,25 +18,159 @@ const PollCard = ({ poll }: PollCardProps) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [pollData, setPollData] = useState<PollOption[]>(poll.options);
+  const [showComments, setShowComments] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
+  const { user } = useAuth();
+  const { toast } = useToast();
   
-  const handleVote = (optionId: string) => {
+  useEffect(() => {
+    // Check if user has already voted
+    const checkVoteStatus = async () => {
+      if (!user) return;
+      
+      const { data } = await supabase
+        .from('user_votes')
+        .select('option_id')
+        .eq('poll_id', poll.id)
+        .eq('user_id', user.id)
+        .single();
+      
+      if (data) {
+        setSelectedOption(data.option_id);
+        setHasVoted(true);
+      }
+    };
+    
+    // Get comment count
+    const getCommentCount = async () => {
+      const { count } = await supabase
+        .from('comments')
+        .select('id', { count: 'exact' })
+        .eq('poll_id', poll.id);
+      
+      setCommentCount(count || 0);
+    };
+    
+    checkVoteStatus();
+    getCommentCount();
+  }, [poll.id, user]);
+  
+  const handleVote = async (optionId: string) => {
+    if (!user) {
+      toast({
+        title: "Authentication required",
+        description: "You must be logged in to vote in polls.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (hasVoted) return;
     
-    setSelectedOption(optionId);
-    setHasVoted(true);
+    try {
+      // Insert the vote
+      const { error } = await supabase
+        .from('user_votes')
+        .insert({
+          poll_id: poll.id,
+          option_id: optionId,
+          user_id: user.id
+        });
+      
+      if (error) throw error;
+      
+      setSelectedOption(optionId);
+      setHasVoted(true);
+      
+      // Update the poll data with the new vote
+      setPollData(prev => 
+        prev.map(option => 
+          option.id === optionId 
+            ? { ...option, votes: option.votes + 1 } 
+            : option
+        )
+      );
+      
+      toast({
+        title: "Vote recorded",
+        description: "Your vote has been successfully recorded.",
+      });
+    } catch (error) {
+      console.error('Error voting:', error);
+      toast({
+        title: "Error",
+        description: "Failed to record your vote. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!user || user.id !== poll.authorId) {
+      toast({
+        title: "Unauthorized",
+        description: "You can only delete your own polls.",
+        variant: "destructive",
+      });
+      return;
+    }
     
-    // Update the poll data with the new vote
-    setPollData(prev => 
-      prev.map(option => 
-        option.id === optionId 
-          ? { ...option, votes: option.votes + 1 } 
-          : option
-      )
-    );
+    setIsDeleting(true);
+    
+    try {
+      const { error } = await supabase
+        .from('polls')
+        .delete()
+        .eq('id', poll.id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Poll deleted",
+        description: "Your poll has been deleted successfully.",
+      });
+      
+      // Refresh the page to update the list
+      window.location.reload();
+    } catch (error) {
+      console.error('Error deleting poll:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete poll.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+  
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Check out this poll on VibeSphere',
+          text: poll.question,
+          url: window.location.href,
+        });
+      } else {
+        // Fallback for browsers that don't support the Web Share API
+        await navigator.clipboard.writeText(window.location.href);
+        toast({
+          title: "Link copied",
+          description: "Poll link copied to clipboard!",
+        });
+      }
+    } catch (error) {
+      console.error('Error sharing poll:', error);
+    }
   };
   
   const totalVotes = pollData.reduce((sum, option) => sum + option.votes, 0);
   const timeAgo = formatDistanceToNow(new Date(poll.createdAt), { addSuffix: true });
+  const isAuthor = user && user.id === poll.authorId;
   
   // Calculate when the poll ends
   const pollEndsText = poll.expiresAt 
@@ -55,9 +193,41 @@ const PollCard = ({ poll }: PollCardProps) => {
               <p className="text-xs text-muted-foreground">{timeAgo}</p>
             </div>
           </div>
-          <button className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors">
-            <MoreHorizontal size={18} />
-          </button>
+          {isAuthor && (
+            <div className="relative">
+              <button 
+                className="text-muted-foreground hover:text-foreground rounded-full p-1 transition-colors"
+                onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+              >
+                <MoreHorizontal size={18} />
+              </button>
+              
+              {showDeleteConfirm && (
+                <div className="absolute right-0 top-8 bg-background border rounded-md shadow-md p-3 z-10 w-56">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-sm font-medium">Delete poll?</h4>
+                    <button 
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    This action cannot be undone.
+                  </p>
+                  <button
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="w-full flex items-center justify-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 text-sm px-3 py-2 rounded-md"
+                  >
+                    <Trash2 size={14} />
+                    {isDeleting ? 'Deleting...' : 'Delete Poll'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         
         <div className="mt-3 mb-4">
@@ -116,16 +286,34 @@ const PollCard = ({ poll }: PollCardProps) => {
       
       {/* Actions */}
       <div className="border-t flex items-center justify-between px-4 py-2">
-        <button className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2 py-1 rounded-md transition-colors">
+        <button 
+          onClick={() => setShowComments(!showComments)}
+          className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2 py-1 rounded-md transition-colors"
+        >
+          <MessageSquare size={16} />
+          <span>{commentCount}</span>
+        </button>
+        
+        <button 
+          className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2 py-1 rounded-md transition-colors"
+        >
           <BarChart2 size={16} />
           <span>Results</span>
         </button>
         
-        <button className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2 py-1 rounded-md transition-colors">
+        <button 
+          onClick={handleShare}
+          className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 px-2 py-1 rounded-md transition-colors"
+        >
           <Share2 size={16} />
           <span>Share</span>
         </button>
       </div>
+      
+      {/* Comments Section */}
+      {showComments && (
+        <CommentSection contentId={poll.id} contentType="poll" />
+      )}
     </div>
   );
 };

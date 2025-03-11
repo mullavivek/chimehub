@@ -88,6 +88,41 @@ const Index = () => {
         
         console.log('Polls data:', pollsData);
         
+        // Fetch likes counts for posts
+        const { data: likesData, error: likesError } = await supabase
+          .from('post_likes')
+          .select('post_id, count')
+          .select('post_id', { count: 'exact', groupBy: 'post_id' });
+        
+        if (likesError) {
+          console.error('Error fetching likes:', likesError);
+          // Don't throw, we can continue without likes data
+        }
+        
+        // Create a map of post IDs to likes counts
+        const likesMap = new Map();
+        likesData?.forEach(item => {
+          likesMap.set(item.post_id, parseInt(item.count));
+        });
+        
+        // Fetch comments counts for posts
+        const { data: postCommentsData, error: postCommentsError } = await supabase
+          .from('comments')
+          .select('post_id')
+          .not('post_id', 'is', null);
+        
+        if (postCommentsError) {
+          console.error('Error fetching post comments:', postCommentsError);
+          // Don't throw, we can continue without comments data
+        }
+        
+        // Create a map of post IDs to comment counts
+        const postCommentsMap = new Map();
+        postCommentsData?.forEach(item => {
+          const count = postCommentsMap.get(item.post_id) || 0;
+          postCommentsMap.set(item.post_id, count + 1);
+        });
+        
         // Format posts data
         const formattedPosts: Post[] = postsData.map(post => ({
           id: post.id,
@@ -105,8 +140,8 @@ const Index = () => {
           isAnonymous: post.is_anonymous,
           createdAt: new Date(post.created_at),
           updatedAt: new Date(post.updated_at),
-          likes: 0, // TODO: Implement likes count
-          comments: 0, // TODO: Implement comments count
+          likes: likesMap.get(post.id) || 0,
+          comments: postCommentsMap.get(post.id) || 0,
         }));
         
         // Format polls data
@@ -275,7 +310,59 @@ const Index = () => {
           </button>
         </div>
 
-        {renderContent()}
+        {isLoading ? (
+        <div className="space-y-4 animate-pulse">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-card border rounded-lg p-6 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-muted"></div>
+                <div className="space-y-2">
+                  <div className="h-4 w-24 bg-muted rounded"></div>
+                  <div className="h-3 w-16 bg-muted rounded"></div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 w-full bg-muted rounded"></div>
+                <div className="h-4 w-5/6 bg-muted rounded"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : contentType === 'all' ? (
+        // Mix posts and polls and sort by date
+        <div className="space-y-4">
+          {[
+            ...posts.map(post => ({ type: 'post', content: post, date: new Date(post.createdAt) })),
+            ...polls.map(poll => ({ type: 'poll', content: poll, date: new Date(poll.createdAt) })),
+          ]
+            .sort((a, b) => b.date.getTime() - a.date.getTime())
+            .map(item => (
+              <div key={`${item.type}-${item.content.id}`} className="animate-slideIn">
+                {item.type === 'post' ? (
+                  <PostCard post={item.content as Post} />
+                ) : (
+                  <PollCard poll={item.content as Poll} />
+                )}
+              </div>
+            ))}
+        </div>
+      ) : contentType === 'posts' ? (
+        <div className="space-y-4">
+          {posts.map(post => (
+            <div key={post.id} className="animate-slideIn">
+              <PostCard post={post} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {polls.map(poll => (
+            <div key={poll.id} className="animate-slideIn">
+              <PollCard poll={poll} />
+            </div>
+          ))}
+        </div>
+      )}
       </div>
     </div>
   );

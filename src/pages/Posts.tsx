@@ -3,96 +3,119 @@ import React, { useState, useEffect } from 'react';
 import PostCard from '@/components/posts/PostCard';
 import { Post } from '@/lib/types';
 import { Search } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 const Posts = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [filteredPosts, setFilteredPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Simulate fetching data
-    setTimeout(() => {
-      const mockPosts: Post[] = [
-        {
-          id: '1',
-          content: 'I just launched a new project and I\'m really excited about it! What do you think?',
-          authorId: '1',
-          author: {
-            id: '1',
-            name: 'John Doe',
-            username: 'johndoe',
-            email: 'john@example.com',
-            createdAt: new Date('2022-01-15'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John',
+    const fetchPosts = async () => {
+      setIsLoading(true);
+      
+      try {
+        const { data: postsData, error: postsError } = await supabase
+          .from('posts')
+          .select(`
+            id,
+            content,
+            author_id,
+            is_anonymous,
+            created_at,
+            updated_at,
+            profiles:author_id (
+              id,
+              name,
+              username,
+              email,
+              image,
+              created_at,
+              default_anonymous
+            )
+          `)
+          .order('created_at', { ascending: false });
+          
+        if (postsError) {
+          console.error('Error fetching posts:', postsError);
+          throw postsError;
+        }
+        
+        // Fetch likes counts for posts
+        const { data: likesData, error: likesError } = await supabase
+          .from('post_likes')
+          .select('post_id, count')
+          .select('post_id', { count: 'exact', groupBy: 'post_id' });
+        
+        if (likesError) {
+          console.error('Error fetching likes:', likesError);
+          // Don't throw, we can continue without likes data
+        }
+        
+        // Create a map of post IDs to likes counts
+        const likesMap = new Map();
+        likesData?.forEach(item => {
+          likesMap.set(item.post_id, parseInt(item.count));
+        });
+        
+        // Fetch comments counts for posts
+        const { data: commentsData, error: commentsError } = await supabase
+          .from('comments')
+          .select('post_id')
+          .not('post_id', 'is', null);
+        
+        if (commentsError) {
+          console.error('Error fetching comments:', commentsError);
+          // Don't throw, we can continue without comments data
+        }
+        
+        // Create a map of post IDs to comment counts
+        const commentsMap = new Map();
+        commentsData?.forEach(item => {
+          const count = commentsMap.get(item.post_id) || 0;
+          commentsMap.set(item.post_id, count + 1);
+        });
+        
+        // Format posts data
+        const formattedPosts: Post[] = postsData.map(post => ({
+          id: post.id,
+          content: post.content,
+          authorId: post.author_id,
+          author: post.is_anonymous ? undefined : {
+            id: post.profiles?.id || '',
+            name: post.profiles?.name || '',
+            username: post.profiles?.username || '',
+            email: post.profiles?.email || '',
+            image: post.profiles?.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username || post.profiles?.id || post.author_id}`,
+            createdAt: new Date(post.profiles?.created_at || post.created_at),
+            defaultAnonymous: post.profiles?.default_anonymous || false,
           },
-          isAnonymous: false,
-          createdAt: new Date('2022-01-15'),
-          updatedAt: new Date('2022-01-15'),
-          likes: 15,
-          comments: 2,
-        },
-        {
-          id: '2',
-          content: 'Sometimes I feel like I\'m not making enough progress in my career. Does anyone else feel this way?',
-          authorId: '2',
-          author: {
-            id: '2',
-            name: 'Jane Smith',
-            username: 'janesmith',
-            email: 'jane@example.com',
-            createdAt: new Date('2022-02-20'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jane',
-          },
-          isAnonymous: true,
-          createdAt: new Date('2022-02-20'),
-          updatedAt: new Date('2022-02-20'),
-          likes: 42,
-          comments: 7,
-        },
-        {
-          id: '3',
-          content: 'Just experienced the most amazing sunset at the beach. Nature\'s beauty is truly breathtaking sometimes.',
-          authorId: '3',
-          author: {
-            id: '3',
-            name: 'Sarah Johnson',
-            username: 'sarahj',
-            email: 'sarah@example.com',
-            createdAt: new Date('2022-03-05'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-          },
-          isAnonymous: false,
-          createdAt: new Date('2022-03-05'),
-          updatedAt: new Date('2022-03-05'),
-          likes: 24,
-          comments: 5,
-        },
-        {
-          id: '4',
-          content: 'Just finished reading "Atomic Habits" and it completely changed my perspective on building good routines.',
-          authorId: '4',
-          author: {
-            id: '4',
-            name: 'Jamie Smith',
-            username: 'jamies',
-            email: 'jamie@example.com',
-            createdAt: new Date('2022-03-08'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jamie',
-          },
-          isAnonymous: false,
-          createdAt: new Date('2022-03-08'),
-          updatedAt: new Date('2022-03-08'),
-          likes: 42,
-          comments: 7,
-        },
-      ];
+          isAnonymous: post.is_anonymous,
+          createdAt: new Date(post.created_at),
+          updatedAt: new Date(post.updated_at),
+          likes: likesMap.get(post.id) || 0,
+          comments: commentsMap.get(post.id) || 0,
+        }));
+        
+        setPosts(formattedPosts);
+        setFilteredPosts(formattedPosts);
+      } catch (error) {
+        console.error('Error fetching posts:', error);
+        toast({
+          title: "Error loading posts",
+          description: "Could not load posts. Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      setPosts(mockPosts);
-      setFilteredPosts(mockPosts);
-      setIsLoading(false);
-    }, 1000);
-  }, []);
+    fetchPosts();
+  }, [toast]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {

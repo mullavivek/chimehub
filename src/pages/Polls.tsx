@@ -3,91 +3,94 @@ import React, { useState, useEffect } from 'react';
 import PollCard from '@/components/polls/PollCard';
 import { Poll } from '@/lib/types';
 import { Search } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 const Polls = () => {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [filteredPolls, setFilteredPolls] = useState<Poll[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Simulate fetching data
-    setTimeout(() => {
-      const mockPolls: Poll[] = [
-        {
-          id: '1',
-          question: 'What\'s your preferred way to work?',
-          options: [
-            { id: '1', text: 'Remote work', votes: 25 },
-            { id: '2', text: 'Office work', votes: 10 },
-            { id: '3', text: 'Hybrid approach', votes: 35 },
-          ],
-          authorId: '3',
-          author: {
-            id: '3',
-            name: 'Alex Rodriguez',
-            username: 'alexr',
-            email: 'alex@example.com',
-            createdAt: new Date('2022-03-10'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
+    const fetchPolls = async () => {
+      setIsLoading(true);
+      
+      try {
+        const { data: pollsData, error: pollsError } = await supabase
+          .from('polls')
+          .select(`
+            id,
+            question,
+            author_id,
+            is_anonymous,
+            created_at,
+            expires_at,
+            total_votes,
+            profiles:author_id (
+              id,
+              name,
+              username,
+              email,
+              image,
+              created_at,
+              default_anonymous
+            ),
+            poll_options (
+              id,
+              text,
+              votes
+            )
+          `)
+          .order('created_at', { ascending: false });
+          
+        if (pollsError) {
+          console.error('Error fetching polls:', pollsError);
+          throw pollsError;
+        }
+        
+        // Format polls data
+        const formattedPolls: Poll[] = pollsData.map(poll => ({
+          id: poll.id,
+          question: poll.question,
+          authorId: poll.author_id,
+          author: poll.is_anonymous ? undefined : {
+            id: poll.profiles?.id || '',
+            name: poll.profiles?.name || '',
+            username: poll.profiles?.username || '',
+            email: poll.profiles?.email || '',
+            image: poll.profiles?.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${poll.profiles?.username || poll.profiles?.id || poll.author_id}`,
+            createdAt: new Date(poll.profiles?.created_at || poll.created_at),
+            defaultAnonymous: poll.profiles?.default_anonymous || false,
           },
-          isAnonymous: false,
-          createdAt: new Date('2022-03-10'),
-          totalVotes: 70,
-          expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 2), // 2 days from now
-        },
-        {
-          id: '2',
-          question: 'Which programming language do you prefer?',
-          options: [
-            { id: '1', text: 'JavaScript', votes: 42 },
-            { id: '2', text: 'Python', votes: 38 },
-            { id: '3', text: 'Java', votes: 15 },
-            { id: '4', text: 'C#', votes: 20 },
-            { id: '5', text: 'Other', votes: 10 },
-          ],
-          authorId: '2',
-          author: {
-            id: '2',
-            name: 'Jane Smith',
-            username: 'janesmith',
-            email: 'jane@example.com',
-            createdAt: new Date('2022-02-20'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jane',
-          },
-          isAnonymous: true,
-          createdAt: new Date('2022-03-15'),
-          totalVotes: 125,
-        },
-        {
-          id: '3',
-          question: 'What\'s your favorite season?',
-          options: [
-            { id: '1', text: 'Spring', votes: 30 },
-            { id: '2', text: 'Summer', votes: 45 },
-            { id: '3', text: 'Fall', votes: 50 },
-            { id: '4', text: 'Winter', votes: 20 },
-          ],
-          authorId: '4',
-          author: {
-            id: '4',
-            name: 'Jamie Smith',
-            username: 'jamies',
-            email: 'jamie@example.com',
-            createdAt: new Date('2022-03-08'),
-            image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jamie',
-          },
-          isAnonymous: false,
-          createdAt: new Date('2022-03-20'),
-          totalVotes: 145,
-        },
-      ];
+          isAnonymous: poll.is_anonymous,
+          createdAt: new Date(poll.created_at),
+          expiresAt: poll.expires_at ? new Date(poll.expires_at) : undefined,
+          totalVotes: poll.total_votes,
+          options: poll.poll_options.map(option => ({
+            id: option.id,
+            text: option.text,
+            votes: option.votes,
+          })),
+        }));
+        
+        setPolls(formattedPolls);
+        setFilteredPolls(formattedPolls);
+      } catch (error) {
+        console.error('Error fetching polls:', error);
+        toast({
+          title: "Error loading polls",
+          description: "Could not load polls. Please try again later.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      setPolls(mockPolls);
-      setFilteredPolls(mockPolls);
-      setIsLoading(false);
-    }, 1000);
-  }, []);
+    fetchPolls();
+  }, [toast]);
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
