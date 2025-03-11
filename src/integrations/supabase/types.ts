@@ -114,6 +114,7 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          default_anonymous: boolean | null
           email: string | null
           id: string
           image: string | null
@@ -122,6 +123,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_anonymous?: boolean | null
           email?: string | null
           id: string
           image?: string | null
@@ -130,6 +132,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_anonymous?: boolean | null
           email?: string | null
           id?: string
           image?: string | null
